@@ -34,13 +34,11 @@ def get_color_name(R, G, B, color_data):
             hex_value = color_data.loc[i, "hex"]
     return cname, hex_value
 
+# --- IMAGE ANALYSIS & HIGHLIGHTING FUNCTIONS ---
+
 def analyze_colors(image_array, k=5):
-    """
-    Analyzes an image to find K dominant colors using K-Means clustering.
-    Returns dominant colors and the K-Means model for later use.
-    """
+    """Analyzes an image to find K dominant colors using K-Means clustering."""
     h, w, _ = image_array.shape
-    # Use a smaller size for analysis to improve performance
     w_new = min(w, 200)
     h_new = int(h / w * w_new)
     image_small = cv2.resize(image_array, (w_new, h_new), interpolation=cv2.INTER_AREA)
@@ -66,47 +64,47 @@ def analyze_colors(image_array, k=5):
     return color_info, kmeans
 
 def create_highlighted_image(original_image_array, kmeans_model, selected_cluster_index):
-    """
-    Generates an image where only the selected dominant color is shown,
-    and the rest is in grayscale. This is for image analysis only.
-    """
+    """Generates an image where only the selected dominant color is shown."""
     pixels = original_image_array.reshape(-1, 3)
     full_size_labels = kmeans_model.predict(pixels)
-    
     mask = (full_size_labels == selected_cluster_index).reshape(original_image_array.shape[:2])
 
     grayscale_image = cv2.cvtColor(original_image_array, cv2.COLOR_RGB2GRAY)
     grayscale_image_3ch = cv2.cvtColor(grayscale_image, cv2.COLOR_GRAY2RGB)
-
     highlighted_image = np.where(mask[:, :, np.newaxis], original_image_array, grayscale_image_3ch)
     return highlighted_image
+
+def hex_to_rgb(hex_code):
+    """Converts a hex color string to an (R, G, B) tuple."""
+    hex_code = hex_code.lstrip('#')
+    return tuple(int(hex_code[i:i+2], 16) for i in (0, 2, 4))
 
 # --- STREAMLIT UI SETUP ---
 
 st.set_page_config(page_title="Color Palette Analyzer", page_icon="🎨", layout="wide")
 color_df = load_color_data()
 
-# Initialize session state for managing image highlights
 if 'highlight_index' not in st.session_state:
     st.session_state.highlight_index = None
 
 st.sidebar.title("Color Palette Analyzer")
 st.sidebar.write("---")
 st.sidebar.header("Options")
-app_mode = st.sidebar.selectbox("Choose an analysis mode:", ["About", "Analyze Image Palette", "Analyze Live Video"])
+app_mode = st.sidebar.selectbox("Choose an analysis mode:", ["About", "Analyze Image Palette", "Analyze Live Video", "Manual Color Picker"])
 st.sidebar.write("---")
-
 
 # --- PAGE ROUTING ---
 
 if app_mode == "About":
     st.title("Welcome to the Color Palette Analyzer! 🎨")
-    st.markdown("This app automatically detects the dominant colors in images and live video.")
-    st.markdown("- **Analyze Image Palette:** Upload an image to extract its main color palette and highlight where each color appears.")
-    st.markdown("- **Analyze Live Video:** Use your webcam to analyze the colors in your environment in real-time.")
+    st.markdown("This app brings together multiple tools for color analysis. Select a mode from the sidebar:")
+    st.markdown("- **Analyze Image Palette:** Upload an image to find its dominant colors and highlight them.")
+    st.markdown("- **Analyze Live Video:** Use your webcam for real-time color palette detection.")
+    st.markdown("- **Manual Color Picker:** Choose a color from a palette to instantly identify its name.")
     st.image("https://images.unsplash.com/photo-1558244402-286dd748c595?w=900", caption="Extract and visualize the palette from any source.")
 
 elif app_mode == "Analyze Image Palette":
+    # ... (code for image analysis remains the same)
     st.header("Analyze an Image's Color Palette")
     num_colors = st.sidebar.slider("Number of Colors to Detect", 2, 15, 5, key="img_slider")
     uploaded_file = st.file_uploader("Upload an Image (JPG, PNG, JPEG)", type=["jpg", "png", "jpeg"])
@@ -114,20 +112,15 @@ elif app_mode == "Analyze Image Palette":
     if uploaded_file and color_df is not None:
         image = Image.open(uploaded_file).convert('RGB')
         img_array = np.array(image)
-        
         col1, col2 = st.columns([2, 1])
 
         with col1:
             image_placeholder = st.empty()
-
         with col2:
             st.subheader("Dominant Color Palette")
             with st.spinner("Analyzing image..."):
                 dominant_colors, kmeans_model = analyze_colors(img_array, k=num_colors)
-                
-                # Store model in session state for reuse by highlight buttons
                 st.session_state.kmeans_model = kmeans_model
-
                 for i, color in enumerate(dominant_colors):
                     rgb, percent, name, hex_val = color
                     cols = st.columns([1, 4, 2])
@@ -138,13 +131,10 @@ elif app_mode == "Analyze Image Palette":
                     with cols[2]:
                         if st.button(f"Highlight", key=f"highlight_{i}"):
                             st.session_state.highlight_index = i
-            
-            # Button to clear the highlight
             if st.session_state.highlight_index is not None:
                 if st.button("Show Original Image"):
                     st.session_state.highlight_index = None
         
-        # Logic to display either original or highlighted image in the placeholder
         if st.session_state.highlight_index is not None:
             with st.spinner("Generating highlight..."):
                 highlighted_img = create_highlighted_image(img_array, st.session_state.kmeans_model, st.session_state.highlight_index)
@@ -154,53 +144,62 @@ elif app_mode == "Analyze Image Palette":
 
 
 elif app_mode == "Analyze Live Video":
+    # ... (code for video analysis remains the same)
     st.header("Analyze Live Video Feed")
     num_colors_video = st.sidebar.slider("Number of Colors to Detect", 2, 10, 4, key="video_slider")
     st.info("Allow webcam access. The dominant colors in the frame will be analyzed in real-time.")
     
     run = st.checkbox('Start Webcam')
-    
     if run and color_df is not None:
         col1, col2 = st.columns([2, 1])
         with col1:
             FRAME_WINDOW = st.image([])
         with col2:
             results_placeholder = st.empty()
-
         camera = cv2.VideoCapture(0)
         frame_count = 0
-        
         while run:
             ret, frame = camera.read()
             if not ret:
                 st.error("Failed to capture image from webcam.")
                 camera.release()
                 break
-            
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             FRAME_WINDOW.image(frame_rgb)
-            
-            # Optimization: Analyze every Nth frame to avoid lag
             if frame_count % 15 == 0:
                 with results_placeholder.container():
                     st.subheader("Live Palette")
                     dominant_colors, _ = analyze_colors(frame_rgb, k=num_colors_video)
                     for color in dominant_colors:
                         rgb, percent, name, hex_val = color
-                        
-                        st.markdown(f"""
-                        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <div style="width:25px; height:25px; background-color:{hex_val}; border-radius: 5px; margin-right: 10px;"></div>
-                            <div>
-                                <div style="font-weight: bold;">{name}</div>
-                                <div style="font-size: 0.8em;">{percent:.0%}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-            
+                        st.markdown(f"""<div style="display: flex; align-items: center; margin-bottom: 10px;"><div style="width:25px; height:25px; background-color:{hex_val}; border-radius: 5px; margin-right: 10px;"></div><div><div style="font-weight: bold;">{name}</div><div style="font-size: 0.8em;">{percent:.0%}</div></div></div>""", unsafe_allow_html=True)
             frame_count += 1
-        
         camera.release()
     else:
         st.write("Webcam is stopped.")
+
+elif app_mode == "Manual Color Picker":
+    st.header("Manual Color Picker")
+    st.write("Use the color wheel to select a color and find its closest name.")
+    
+    # Use the color picker widget
+    picked_color_hex = st.color_picker("Pick a color", "#FFFFFF")
+
+    if picked_color_hex and color_df is not None:
+        # Convert hex to RGB
+        r, g, b = hex_to_rgb(picked_color_hex)
+        
+        # Get the color name
+        color_name, _ = get_color_name(r, g, b, color_df)
+        
+        # Display the results
+        st.write("---")
+        st.subheader("Result")
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            st.markdown(f'<div style="width:80px; height:80px; background-color:{picked_color_hex}; border: 1px solid #d3d3d3; border-radius: 8px;"></div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"### Closest Match: **{color_name}**")
+            st.write(f"**HEX:** {picked_color_hex}")
+            st.write(f"**RGB:** ({r}, {g}, {b})")
 
