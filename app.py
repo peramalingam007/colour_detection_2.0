@@ -6,7 +6,6 @@ from PIL import Image
 from sklearn.cluster import KMeans
 from collections import Counter
 
-# --- CORE HELPER FUNCTIONS ---
 
 @st.cache_data
 def load_color_data():
@@ -33,8 +32,6 @@ def get_color_name(R, G, B, color_data):
             cname = color_data.loc[i, "color_name"]
             hex_value = color_data.loc[i, "hex"]
     return cname, hex_value
-
-# --- IMAGE ANALYSIS & HIGHLIGHTING FUNCTIONS ---
 
 def analyze_colors(image_array, k=5):
     """Analyzes an image to find K dominant colors using K-Means clustering."""
@@ -79,7 +76,6 @@ def hex_to_rgb(hex_code):
     hex_code = hex_code.lstrip('#')
     return tuple(int(hex_code[i:i+2], 16) for i in (0, 2, 4))
 
-# --- STREAMLIT UI SETUP ---
 
 st.set_page_config(page_title="Color Palette Analyzer", page_icon="🎨", layout="wide")
 color_df = load_color_data()
@@ -93,8 +89,6 @@ st.sidebar.header("Options")
 app_mode = st.sidebar.selectbox("Choose an analysis mode:", ["About", "Analyze Image Palette", "Analyze Live Video", "Manual Color Picker"])
 st.sidebar.write("---")
 
-# --- PAGE ROUTING ---
-
 if app_mode == "About":
     st.title("Welcome to the Color Palette Analyzer! 🎨")
     st.markdown("This app brings together multiple tools for color analysis. Select a mode from the sidebar:")
@@ -104,7 +98,6 @@ if app_mode == "About":
     st.image("https://images.unsplash.com/photo-1558244402-286dd748c595?w=900", caption="Extract and visualize the palette from any source.")
 
 elif app_mode == "Analyze Image Palette":
-    # ... (code for image analysis remains the same)
     st.header("Analyze an Image's Color Palette")
     num_colors = st.sidebar.slider("Number of Colors to Detect", 2, 15, 5, key="img_slider")
     uploaded_file = st.file_uploader("Upload an Image (JPG, PNG, JPEG)", type=["jpg", "png", "jpeg"])
@@ -144,7 +137,6 @@ elif app_mode == "Analyze Image Palette":
 
 
 elif app_mode == "Analyze Live Video":
-    # ... (code for video analysis remains the same)
     st.header("Analyze Live Video Feed")
     num_colors_video = st.sidebar.slider("Number of Colors to Detect", 2, 10, 4, key="video_slider")
     st.info("Allow webcam access. The dominant colors in the frame will be analyzed in real-time.")
@@ -182,17 +174,13 @@ elif app_mode == "Manual Color Picker":
     st.header("Manual Color Picker")
     st.write("Use the color wheel to select a color and find its closest name.")
     
-    # Use the color picker widget
     picked_color_hex = st.color_picker("Pick a color", "#FFFFFF")
 
     if picked_color_hex and color_df is not None:
-        # Convert hex to RGB
         r, g, b = hex_to_rgb(picked_color_hex)
         
-        # Get the color name
         color_name, _ = get_color_name(r, g, b, color_df)
         
-        # Display the results
         st.write("---")
         st.subheader("Result")
         col1, col2 = st.columns([1, 4])
