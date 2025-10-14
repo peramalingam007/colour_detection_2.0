@@ -12,7 +12,6 @@ def load_color_data():
     """Loads color data from colors.csv into a pandas dataframe."""
     try:
         index = ["color", "color_name", "hex", "r", "g", "b"]
-        # Ensure the path is correct if the file is not in the root
         df = pd.read_csv('colors.csv', names=index, header=None)
         return df
     except FileNotFoundError:
@@ -37,9 +36,10 @@ def get_color_name(r, g, b, color_data):
 def analyze_colors(image_array, k=5):
     """Analyzes an image to find k dominant colors using K-Means clustering.
        Optimized for speed by resizing the image before clustering."""
+    if image_array is None or image_array.size == 0:
+        return [], None
+
     h, w, _ = image_array.shape
-    # Resize to a smaller, fixed width to speed up clustering
-    # A width of 100-200 pixels is usually sufficient for color detection
     max_dim = 150 # Max dimension for the smaller image to cluster
     if h > w:
         new_h = max_dim
@@ -81,12 +81,10 @@ def analyze_colors(image_array, k=5):
 
 def create_highlighted_image(original_image_array, kmeans_model, selected_cluster_index):
     """Generates an image where only the selected dominant color is shown."""
-    # Ensure the kmeans_model exists before trying to predict
-    if kmeans_model is None:
+    if kmeans_model is None or original_image_array is None:
         return original_image_array
 
     pixels = original_image_array.reshape(-1, 3)
-    # Predict labels for the full-size image using the trained model
     full_size_labels = kmeans_model.predict(pixels)
     mask = (full_size_labels == selected_cluster_index).reshape(original_image_array.shape[:2])
 
@@ -104,10 +102,11 @@ def hex_to_rgb(hex_code):
 st.set_page_config(page_title="Color Palette Analyzer", page_icon="🎨", layout="wide")
 color_df = load_color_data()
 
+# Initialize session state variables
 if 'highlight_index' not in st.session_state:
     st.session_state.highlight_index = None
 if 'kmeans_model' not in st.session_state:
-    st.session_state.kmeans_model = None # Initialize to None
+    st.session_state.kmeans_model = None
 
 st.sidebar.title("Color Palette Analyzer")
 st.sidebar.write("---")
@@ -169,39 +168,44 @@ elif app_mode == "Analyze Image Palette":
 elif app_mode == "Analyze Live Video":
     st.header("Analyze Live Video Feed")
     num_colors_video = st.sidebar.slider("Number of colors to detect", 2, 10, 4, key="video_slider")
-    st.info("Allow webcam access. The dominant colors in the frame will be analyzed in real-time.")
     
-    run = st.checkbox('Start Webcam')
-    if run and color_df is not None:
+    st.warning("Please ensure your browser has permission to access the webcam. Look for a camera icon in the address bar.")
+    st.info("If your webcam is in use by another application, please close it and refresh this page.")
+    
+    run_webcam = st.checkbox('Start Webcam') # Renamed variable to avoid conflict with `run`
+    
+    if run_webcam and color_df is not None:
         col1, col2 = st.columns([2, 1])
         with col1:
-            frame_window = st.image([])
+            frame_window = st.empty() # Use st.empty() to update the image in place
         with col2:
             results_placeholder = st.empty()
         
-        camera = cv2.VideoCapture(0)
-        if not camera.isOpened():
-            st.error("Failed to open webcam. Please ensure it's not in use by another application.")
-            run = False # Stop the loop if camera can't be opened
-            st.stop()
+        # Initialize camera capture outside the loop for efficiency
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error("Failed to open webcam. Please ensure it's not in use by another application and permissions are granted.")
+            st.stop() # Stop the script execution if camera cannot be opened
             
         frame_count = 0
-        while run:
-            ret, frame = camera.read()
+        while run_webcam: # Loop continues as long as checkbox is checked
+            ret, frame = cap.read()
             if not ret:
-                st.error("Failed to capture image from webcam. Is the camera properly connected?")
-                run = False # Stop the loop if capture fails
-                break
+                st.error("Failed to capture image from webcam. Trying to re-open...")
+                # Attempt to re-open if capture fails, might be a temporary glitch
+                cap.release()
+                cap = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                    st.error("Still unable to capture. Please check webcam connection.")
+                    break # Break the loop if re-opening also fails
+                continue # Skip to next iteration
             
-            # OpenCV captures in BGR, convert to RGB for consistency with other parts of the app
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_window.image(frame_rgb, channels="RGB") # Explicitly set channels
+            frame_window.image(frame_rgb, channels="RGB", use_column_width=True) # Display frame in real-time
             
-            # Analyze colors less frequently to avoid performance issues
-            if frame_count % 30 == 0: # Analyze every 30 frames (approx. 1 second at 30fps)
+            if frame_count % 30 == 0: # Analyze colors less frequently to avoid performance issues
                 with results_placeholder.container():
                     st.subheader("Live Palette")
-                    # No need to store kmeans_model for live video as it's per-frame analysis
                     dominant_colors, _ = analyze_colors(frame_rgb, k=num_colors_video)
                     if dominant_colors:
                         for color in dominant_colors:
@@ -210,14 +214,15 @@ elif app_mode == "Analyze Live Video":
                     else:
                         st.write("Analyzing...")
             frame_count += 1
-            # Check if the 'run' checkbox has been unchecked by the user
-            if not st.session_state.get('Start Webcam', True): # Access by key, default True if not in state
-                run = False
+            
+            # Check if the user has unchecked the "Start Webcam" checkbox
+            # This is the crucial part for stopping the loop correctly in Streamlit
+            run_webcam = st.session_state.get('Start Webcam', False) # Check the current state of the checkbox
         
-        camera.release()
-        if not run: # Only show this if the loop was stopped by user or error
-            st.write("Webcam is stopped.")
-    else:
+        # Release the camera when the loop stops
+        cap.release()
+        st.write("Webcam is stopped.")
+    elif not run_webcam: # If the checkbox is not checked initially
         st.write("Press 'Start Webcam' to begin live analysis.")
 
 
