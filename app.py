@@ -102,7 +102,8 @@ if app_mode == "About":
     st.markdown("- **Analyze Image Palette:** Upload an image to find its dominant colors and highlight them.")
     st.markdown("- **Analyze Live Video:** Use your webcam for real-time color palette detection.")
     st.markdown("- **Manual Color Picker:** Choose a color from a palette to instantly identify its name.")
-    st.image("https://images.unsplash.com/photo-1558244402-286dd748c595?w=900", caption="Extract and visualize the palette from any source.")
+    # FIX: Replaced the unstable Unsplash URL with a stable one.
+    st.image("https://raw.githubusercontent.com/streamlit/demo-uber-nyc-pickups/master/reports/uber-pickups-in-new-york-city-6.png", caption="Extract and visualize the palette from any source.")
 
 elif app_mode == "Analyze Image Palette":
     st.header("Analyze an Image's Color Palette")
